@@ -1,0 +1,17 @@
+{
+  "name": "exit1.dev.automation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Automations and AI agents for exit1.dev",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "webhook": "node src/webhook-receiver/server.js",
+    "webhook:dev": "node --watch src/webhook-receiver/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
