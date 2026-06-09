@@ -1,15 +1,20 @@
 import express from 'express';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { config, xConfigured, openrouterConfigured } from '../config.js';
 import { handleDelivery } from '../lib/publisher.js';
 
-// Constant-time secret compare that tolerates length differences.
-const secretMatches = (provided, expected) => {
-  if (typeof provided !== 'string' || provided.length === 0) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+// exit1.dev signs each delivery as `X-Exit1-Signature: sha256=<hex>`, an
+// HMAC-SHA256 of the exact raw request body keyed by the webhook secret
+// (see functions/src/alert-webhook.ts). We must verify against the raw bytes
+// we received — re-serializing req.body could reorder keys / change spacing
+// and break the comparison.
+const verifySignature = (header, rawBody) => {
+  if (!header || !rawBody?.length || !SECRET) return false;
+  const m = /^sha256=([a-f0-9]{64})$/i.exec(header.trim());
+  if (!m) return false;
+  const expected = createHmac('sha256', SECRET).update(rawBody).digest();
+  const provided = Buffer.from(m[1], 'hex');
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
 };
 
 const PORT = config.port;
@@ -17,7 +22,10 @@ const PATH = config.webhookPath;
 const SECRET = config.webhookSecret;
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({
+  limit: '1mb',
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 
 const c = {
   reset: '\x1b[0m',
@@ -99,10 +107,8 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.post(PATH, (req, res) => {
   if (SECRET) {
-    // Header only — never accept the secret via query string, which leaks
-    // into proxy/access logs (Traefik), browser history, and intermediaries.
-    if (!secretMatches(req.header('x-webhook-secret'), SECRET)) {
-      console.warn(paint('yellow', `[auth] rejected delivery: bad or missing secret`));
+    if (!verifySignature(req.header('x-exit1-signature'), req.rawBody)) {
+      console.warn(paint('yellow', `[auth] rejected delivery: bad or missing X-Exit1-Signature`));
       return res.status(401).json({ ok: false, error: 'unauthorized' });
     }
   }
@@ -155,7 +161,7 @@ const server = app.listen(PORT, () => {
   console.log(paint('gray', '  ──────────────────────────────────────────'));
   console.log(`  ${paint('bold', 'Listening')}  http://localhost:${PORT}${PATH}`);
   console.log(`  ${paint('bold', 'Health')}     http://localhost:${PORT}/health`);
-  console.log(`  ${paint('bold', 'Auth')}       ${SECRET ? paint('green', 'shared secret required (x-webhook-secret)') : paint('yellow', 'open — set WEBHOOK_SECRET to require auth')}`);
+  console.log(`  ${paint('bold', 'Auth')}       ${SECRET ? paint('green', 'HMAC-SHA256 of body required (X-Exit1-Signature)') : paint('yellow', 'open — set WEBHOOK_SECRET to require auth')}`);
   console.log(`  ${paint('bold', 'Publish')}    ${publishMode}`);
   console.log(`  ${paint('bold', 'Copy')}       ${copyMode}`);
   console.log(`  ${paint('bold', 'Budget')}     ${config.budget.perDay}/day · ${config.budget.perMonth}/month · link in posts: ${config.includeLink ? 'on' : 'off'}`);
