@@ -32,7 +32,7 @@ So followers see, in real time, when something exit1.dev monitors goes down — 
 - **Dedup** — a site already marked down won't post again until it recovers.
 - **Flap suppression** — after a recovery, a new down-post for that site is suppressed for `FLAP_COOLDOWN_MS` (default 15 min).
 - **Post budget** — hard caps (`30/day`, `400/month` by default) sized under X's lowest write quota; over budget → log-and-skip, never a hard API failure. Counted in wall-clock time, so a backlog of old-timestamped events can't blow the cap.
-- **Budget-bounded cost** — on X's pay-per-use pricing a post with a link costs ~$0.20 vs ~$0.015. Every post names the monitored host (a domain), so the monthly budget cap (~$80/mo worst case) is the real spend bound; `INCLUDE_LINK=false` just skips an *extra* brand CTA link.
+- **Per-site status-page link** — each post links to the affected site's public status page (`exit1.dev/status/<slug>`), resolved by matching the event to the public-monitors index; sites without a status page fall back to the home page. `INCLUDE_LINK=false` drops the link. On X pay-per-use a post with a link costs ~$0.20 vs ~$0.015, but posts already name the host (a domain), so the monthly budget cap (~$80/mo worst case) is the real spend bound.
 - **Graceful AI fallback** — any OpenRouter failure (timeout, error, empty/over-long, content filter) falls back to the template, so a flaky model never blocks or garbles a public post.
 
 ## Run locally
@@ -86,7 +86,7 @@ All config is environment variables — see [.env.example](.env.example) for the
 | `OPENROUTER_MODEL` | `anthropic/claude-3.5-haiku` | Any OpenRouter slug. |
 | `POST_BUDGET_PER_DAY` / `_PER_MONTH` | `30` / `400` | Hard self-imposed post caps. |
 | `FLAP_COOLDOWN_MS` | `900000` | Post-recovery suppression window per site. |
-| `INCLUDE_LINK` | `false` | Put a clickable brand URL in posts (costs more on X pay-per-use). |
+| `INCLUDE_LINK` | `true` | Append the affected site's status-page link (home fallback) to posts. |
 | `STATE_FILE` | `./data/state.json` | Persistent state. **Must be on a durable volume in prod.** |
 
 ## Deploy

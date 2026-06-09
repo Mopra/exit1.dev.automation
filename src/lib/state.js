@@ -7,6 +7,8 @@
 //                      enforce the rolling daily/monthly budget.
 //   • cooldowns      — siteKey -> epoch-ms a site last recovered, used
 //                      to suppress flapping (rapid down/up) re-posts.
+//   • recentPosts    — texts of the last few posts, fed back to the copy
+//                      model as "don't echo these" so posts stay varied.
 //
 // All writes go through a single promise chain so concurrent webhook
 // deliveries can't corrupt the file or race each other.
@@ -16,7 +18,11 @@ import path from 'node:path';
 
 const MONTH_MS = 31 * 24 * 60 * 60 * 1000;
 
-const empty = () => ({ openIncidents: {}, posts: [], cooldowns: {} });
+// How many recent post texts to retain. Only a short tail is useful as
+// "don't repeat yourself" context; this is variety memory, not a ledger.
+const RECENT_KEEP = 20;
+
+const empty = () => ({ openIncidents: {}, posts: [], cooldowns: {}, recentPosts: [] });
 
 export class Store {
   constructor(file) {
@@ -35,6 +41,7 @@ export class Store {
         openIncidents: parsed.openIncidents ?? {},
         posts: Array.isArray(parsed.posts) ? parsed.posts : [],
         cooldowns: parsed.cooldowns ?? {},
+        recentPosts: Array.isArray(parsed.recentPosts) ? parsed.recentPosts : [],
       };
     } catch (err) {
       if (err.code === 'ENOENT') {
@@ -130,6 +137,27 @@ export class Store {
       // Prune stale cooldowns too.
       for (const [k, v] of Object.entries(d.cooldowns)) {
         if (v < cutoff) delete d.cooldowns[k];
+      }
+    });
+  }
+
+  // ── Recent post texts (copy variety) ─────────────────────────
+  // Returns the last `n` post texts, oldest → newest. These are shown to
+  // the copy model so it can deliberately phrase the next post differently.
+  async getRecentPosts(n) {
+    await this.load();
+    const all = Array.isArray(this.data.recentPosts) ? this.data.recentPosts : [];
+    return n > 0 ? all.slice(-n) : all.slice();
+  }
+
+  addRecentPost(text) {
+    const t = String(text ?? '').trim();
+    if (!t) return this.queue;
+    return this.#mutate((d) => {
+      if (!Array.isArray(d.recentPosts)) d.recentPosts = [];
+      d.recentPosts.push(t);
+      if (d.recentPosts.length > RECENT_KEEP) {
+        d.recentPosts = d.recentPosts.slice(-RECENT_KEEP);
       }
     });
   }

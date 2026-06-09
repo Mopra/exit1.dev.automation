@@ -10,6 +10,7 @@ import { config } from '../config.js';
 import { normalize, humanDuration } from './normalize.js';
 import { Store } from './state.js';
 import { generateCopy } from './copy.js';
+import { resolveStatusLink } from './status-page.js';
 import { postTweet, replyTweet } from './x-client.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -78,7 +79,9 @@ async function handleDown(incident) {
     return { action: 'skip', reason: budget.reason };
   }
 
-  const text = await generateCopy(incident, { phase: 'down' });
+  const link = config.includeLink ? await resolveStatusLink(incident) : null;
+  const recentPosts = await store.getRecentPosts(config.copy.recentMemory);
+  const text = await generateCopy(incident, { phase: 'down', link, recentPosts });
   const tweet = await postTweet(text);
 
   await store.openIncident(siteKey, {
@@ -87,6 +90,9 @@ async function handleDown(incident) {
     name: site.name,
     host: site.host,
   });
+  // Remember the text (even in dry-run) purely so the next post can avoid
+  // echoing it — this is variety memory, not the budget ledger below.
+  await store.addRecentPost(text);
   if (!tweet.dryRun) await store.recordPost(now);
 
   return {
@@ -124,13 +130,18 @@ async function handleUp(incident) {
     return { action: 'skip', reason: budget.reason, closed: true };
   }
 
+  const link = config.includeLink ? await resolveStatusLink(incident) : null;
+  const recentPosts = await store.getRecentPosts(config.copy.recentMemory);
   const text = await generateCopy(incident, {
     phase: 'up',
     durationMs,
     durationText: humanDuration(durationMs),
+    link,
+    recentPosts,
   });
   const reply = await replyTweet(text, open.downTweetId);
 
+  await store.addRecentPost(text);
   if (!reply.dryRun) await store.recordPost(now);
 
   return {
