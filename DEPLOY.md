@@ -35,12 +35,18 @@ X_API_SECRET=...
 X_ACCESS_TOKEN=...
 X_ACCESS_TOKEN_SECRET=...
 OPENROUTER_API_KEY=sk-or-v1-...
-OPENROUTER_MODEL=anthropic/claude-3.5-haiku
+OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
 # Optional overrides:
 # POST_BUDGET_PER_DAY=30
 # POST_BUDGET_PER_MONTH=400
-# INCLUDE_LINK=false
+# OPENROUTER_TEMPERATURE=0.85   # higher = more varied, too high = confabulation
+# COPY_RECENT_MEMORY=8          # recent posts shown to the model to avoid repetition
 ```
+
+> **Upgrading an existing deploy:** the VPS `.env` may still pin
+> `OPENROUTER_MODEL=anthropic/claude-3.5-haiku`. Change it to
+> `anthropic/claude-sonnet-4.5` (or delete the line to take the code default),
+> otherwise the human-voice copy upgrade won't take effect.
 
 ## 3. Ensure state persists
 

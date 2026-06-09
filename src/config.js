@@ -45,9 +45,11 @@ export const config = {
     referer: str(process.env.OPENROUTER_REFERER, 'https://exit1.dev'),
     title: str(process.env.OPENROUTER_TITLE, 'exit1.dev status bot'),
     timeoutMs: int(process.env.OPENROUTER_TIMEOUT_MS, 12000),
-    // Run warm: a higher temperature plus repetition penalties (see copy.js)
-    // keep back-to-back posts from collapsing into the same template phrasing.
-    temperature: float(process.env.OPENROUTER_TEMPERATURE, 0.95),
+    // Run warm: variety comes mostly from angle nudges + recent-post memory +
+    // repetition penalties (see copy.js), so temperature is kept moderate —
+    // high enough to vary phrasing, low enough that the model doesn't start
+    // confabulating cause/impact about famous hosts.
+    temperature: float(process.env.OPENROUTER_TEMPERATURE, 0.85),
   },
 
   // ── Copy variety ───────────────────────────────────────────────
