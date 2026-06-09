@@ -1,0 +1,32 @@
+# Reference compose for the automation receiver. The Frankfurt VPS already
+# runs this stack under /opt/exit1-automation; reconcile with what's there
+# rather than blindly replacing it. The two things that MUST be present:
+#   1) env_file with the X + OpenRouter creds and DRY_RUN
+#   2) a persistent volume mounted at /app/data (else restarts lose the
+#      open-incident threading state and the post-budget counter)
+services:
+  receiver:
+    build: .
+    image: exit1-automation-receiver
+    container_name: exit1-automation-receiver
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Override the in-image default so state lands on the mounted volume.
+      STATE_FILE: /app/data/state.json
+    volumes:
+      - automation-data:/app/data
+    # Expose only if you front it directly. On the VPS, Traefik already
+    # routes automation.exit1.dev → this service; keep that config where it
+    # lives today rather than duplicating labels here.
+    # ports:
+    #   - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  automation-data:

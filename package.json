@@ -8,10 +8,12 @@
     "node": ">=20"
   },
   "scripts": {
-    "webhook": "node src/webhook-receiver/server.js",
-    "webhook:dev": "node --watch src/webhook-receiver/server.js"
+    "webhook": "node --env-file-if-exists=.env src/webhook-receiver/server.js",
+    "webhook:dev": "node --watch --env-file-if-exists=.env src/webhook-receiver/server.js",
+    "simulate": "node --env-file-if-exists=.env src/dev/simulate.js"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "twitter-api-v2": "^1.18.2"
   }
 }

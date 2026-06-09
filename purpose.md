@@ -30,7 +30,8 @@ If a feature belongs in the product itself, it goes in `exit1.dev`. If it is ope
 
 | Status | Automation | Description |
 |---|---|---|
-| In progress | **Webhook receiver** | CLI listener for `website_down` / `website_up` events emitted by exit1.dev webhooks. First step toward downstream automations (alert routing, incident creation, AI triage). |
+| Live | **Webhook receiver** | HTTP listener for `website_down` / `website_up` events emitted by exit1.dev webhooks. Normalizes deliveries and feeds downstream automations. Runs at `automation.exit1.dev`. |
+| Live | **X status bot** | Auto-posts outages and recoveries to X. AI-written copy (OpenRouter) with template fallback; recoveries thread under the down-post with downtime duration; dedup, flap suppression, and a hard post-budget guard. Ships dry-run-first. |
 | Planned | Incident triage agent | LLM-driven classification of incoming downtime events (transient vs. real, severity, blast radius). |
 | Planned | Status-page draft agent | Generates status-page incident copy from the raw event stream for human review. |
 | Planned | On-call routing | Forward filtered events to PagerDuty / Opsgenie / Slack with deduplication and noise suppression beyond what exit1.dev's built-in webhook presets do. |
@@ -41,10 +42,22 @@ If a feature belongs in the product itself, it goes in `exit1.dev`. If it is ope
 exit1.dev.automation/
 ├── purpose.md          # this file
 ├── README.md           # how to run things
+├── DEPLOY.md           # VPS runbook for going live
+├── Dockerfile          # container image
+├── docker-compose.yml  # reference deployment
 ├── package.json
 └── src/
-    └── webhook-receiver/
-        └── server.js   # first automation: CLI webhook listener
+    ├── config.js              # env → config (one source of truth)
+    ├── webhook-receiver/
+    │   └── server.js          # HTTP listener; acks + hands off to the publisher
+    ├── lib/
+    │   ├── normalize.js       # raw delivery → clean incident
+    │   ├── publisher.js       # dedup / flap / budget orchestration
+    │   ├── copy.js            # OpenRouter copy + template fallback
+    │   ├── x-client.js        # twitter-api-v2 wrapper (dry-run aware)
+    │   └── state.js           # persistent JSON store
+    └── dev/
+        └── simulate.js        # offline end-to-end pipeline exercise
 ```
 
-Each automation gets its own subdirectory under `src/` and its own npm script.
+Each automation gets its own entry point and npm script; shared building blocks live in `src/lib/`.

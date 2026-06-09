@@ -4,3 +4,6 @@ node_modules/
 *.log
 .DS_Store
 .claude/
+
+# Runtime state (open incidents, post-budget ledger, flap cooldowns)
+data/
