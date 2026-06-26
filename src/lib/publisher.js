@@ -73,6 +73,12 @@ async function withinBudget(now) {
 }
 
 async function process(rawBody) {
+  // Outage automation can be turned off entirely, independent of the content
+  // scheduler. When off, deliveries are acked and dropped (no copy, no posts).
+  if (!config.outage.enabled) {
+    return { action: 'skip', reason: 'outage automation disabled (OUTAGE_ENABLED=false)' };
+  }
+
   const incident = normalize(rawBody);
   if (!incident) return { action: 'skip', reason: 'unparseable body' };
   if (!incident.siteKey) return { action: 'skip', reason: 'no usable site identifier' };
@@ -155,7 +161,7 @@ async function postDown(incident) {
   const link = config.includeLink ? await resolveStatusLink(incident) : null;
   const recentPosts = await store.getRecentPosts(config.copy.recentMemory);
   const text = await generateCopy(incident, { phase: 'down', link, recentPosts });
-  const tweet = await postTweet(text);
+  const tweet = await postTweet(text, { dryRun: config.outage.dryRun });
 
   await store.openIncident(siteKey, {
     downTweetId: tweet.id,
@@ -237,7 +243,7 @@ async function handleUp(incident) {
     link,
     recentPosts,
   });
-  const reply = await replyTweet(text, open.downTweetId);
+  const reply = await replyTweet(text, open.downTweetId, { dryRun: config.outage.dryRun });
 
   await store.addRecentPost(text);
   if (!reply.dryRun) await store.recordPost(now);

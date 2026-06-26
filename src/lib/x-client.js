@@ -42,9 +42,9 @@ const describeError = (err) => {
   return parts.join(' — ') || String(err);
 };
 
-export async function postTweet(text) {
-  if (config.dryRun || !xConfigured) {
-    if (!xConfigured && !config.dryRun) {
+export async function postTweet(text, { dryRun = config.dryRun } = {}) {
+  if (dryRun || !xConfigured) {
+    if (!xConfigured && !dryRun) {
       console.warn('[x] credentials missing — forcing dry-run for this post');
     }
     return dryRunResult(text, null);
@@ -58,13 +58,13 @@ export async function postTweet(text) {
   }
 }
 
-export async function replyTweet(text, inReplyToTweetId) {
+export async function replyTweet(text, inReplyToTweetId, { dryRun = config.dryRun } = {}) {
   // A recovery whose down-post was a dry run (or whose id we lost) can't
   // thread — fall back to a standalone post so the "all clear" still goes out.
   const canThread = inReplyToTweetId && !String(inReplyToTweetId).startsWith('dryrun-');
 
-  if (config.dryRun || !xConfigured) {
-    if (!xConfigured && !config.dryRun) {
+  if (dryRun || !xConfigured) {
+    if (!xConfigured && !dryRun) {
       console.warn('[x] credentials missing — forcing dry-run for this reply');
     }
     return dryRunResult(text, canThread ? inReplyToTweetId : null);

@@ -19,6 +19,14 @@ const float = (v, dflt) => {
 
 const str = (v, dflt) => (v == null || v === '' ? dflt : String(v));
 
+// Like bool() but returns null when the var is unset, so a per-automation
+// override can fall back to a shared default with `?? `.
+const boolOpt = (v) => (v == null || v === '' ? null : bool(v, false));
+
+// Global posting default. Each automation has its OWN switch that overrides this
+// when set, so the outage bot and the content scheduler go live independently.
+const dryRunDefault = bool(process.env.DRY_RUN, true);
+
 export const config = {
   // ── HTTP receiver ──────────────────────────────────────────────
   port: int(process.env.PORT, 3000),
@@ -26,15 +34,25 @@ export const config = {
   webhookSecret: process.env.WEBHOOK_SECRET || null,
 
   // ── X (Twitter) publishing ─────────────────────────────────────
-  // When DRY_RUN is true, copy is generated and threading state is
-  // updated, but nothing is actually posted to X. Defaults to true so
-  // the bot can never post publicly until it is explicitly switched on.
-  dryRun: bool(process.env.DRY_RUN, true),
+  // DRY_RUN is the GLOBAL default: when true, copy is generated and logged but
+  // nothing is posted. Defaults to true so nothing can post until switched on.
+  // Each automation overrides this independently (config.outage.dryRun /
+  // config.scheduler.dryRun), so you can take ONE live without the other.
+  dryRun: dryRunDefault,
   x: {
     appKey: process.env.X_API_KEY || null,
     appSecret: process.env.X_API_SECRET || null,
     accessToken: process.env.X_ACCESS_TOKEN || null,
     accessSecret: process.env.X_ACCESS_TOKEN_SECRET || null,
+  },
+
+  // ── Outage bot (webhook -> X): on/off + its own posting mode ────
+  // enabled=false fully disables the outage pipeline (no copy generated, no
+  // posts, deliveries are acked and dropped). dryRun falls back to DRY_RUN
+  // unless OUTAGE_DRY_RUN is set explicitly.
+  outage: {
+    enabled: bool(process.env.OUTAGE_ENABLED, true),
+    dryRun: boolOpt(process.env.OUTAGE_DRY_RUN) ?? dryRunDefault,
   },
 
   // ── AI copywriting (OpenRouter) ────────────────────────────────
@@ -116,6 +134,10 @@ export const config = {
   // real posting. To change WHAT/WHEN, edit calendar.js (not env).
   scheduler: {
     enabled: bool(process.env.CONTENT_SCHEDULER_ENABLED, true),
+    // Posting mode for the scheduler; falls back to DRY_RUN unless
+    // CONTENT_DRY_RUN is set. This is how the scheduler posts live while the
+    // outage bot stays dry-run or disabled.
+    dryRun: boolOpt(process.env.CONTENT_DRY_RUN) ?? dryRunDefault,
     // +/- minutes of deterministic jitter on each post's time, so posts do not
     // land on the exact same minute every day (an automation tell). Stable per
     // post, so the rendered draft matches what actually posts.

@@ -154,11 +154,13 @@ app.use((err, req, res, _next) => {
 });
 
 const server = app.listen(PORT, () => {
-  const publishMode = config.dryRun
-    ? paint('yellow', 'DRY-RUN — copy generated & logged, nothing posted to X')
-    : xConfigured
-      ? paint('green', 'LIVE — posting to X')
-      : paint('yellow', 'LIVE requested but X creds missing — falling back to dry-run');
+  const publishMode = !config.outage.enabled
+    ? paint('gray', 'DISABLED — outage posting off (OUTAGE_ENABLED=false)')
+    : config.outage.dryRun
+      ? paint('yellow', 'DRY-RUN — copy generated & logged, nothing posted to X')
+      : xConfigured
+        ? paint('green', 'LIVE — posting to X')
+        : paint('yellow', 'LIVE requested but X creds missing — falling back to dry-run');
   const copyMode = openrouterConfigured
     ? paint('green', `AI (${config.openrouter.model})`)
     : paint('yellow', 'template only — set OPENROUTER_API_KEY for AI copy');

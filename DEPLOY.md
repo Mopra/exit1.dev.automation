@@ -120,7 +120,24 @@ exact same minute daily. To reschedule or rewrite, edit `calendar.js` and re-run
 `npm run calendar`.
 
 **Knobs** (all optional, see `.env.example`): `CONTENT_SCHEDULER_ENABLED`,
-`CONTENT_JITTER_MIN`, `CONTENT_GRACE_MIN`, `CONTENT_STATE_FILE`.
+`CONTENT_DRY_RUN`, `CONTENT_JITTER_MIN`, `CONTENT_GRACE_MIN`, `CONTENT_STATE_FILE`.
+
+### Independent on/off per automation
+
+`DRY_RUN` is only the global default. The outage bot and the content scheduler
+each have their own switch, so they go live independently:
+
+| Goal | Env |
+|---|---|
+| Everything off (safe) | `DRY_RUN=true` |
+| Content scheduler live, outage **disabled** | `OUTAGE_ENABLED=false` + `CONTENT_DRY_RUN=false` |
+| Content live, outage still dry-run (logs only) | `CONTENT_DRY_RUN=false` (leave `DRY_RUN=true`) |
+| Both live | `DRY_RUN=false` |
+
+`OUTAGE_ENABLED=false` fully disables the outage pipeline (deliveries acked and
+dropped, no copy, no posts). `OUTAGE_DRY_RUN` / `CONTENT_DRY_RUN` override
+`DRY_RUN` for just that automation when set. The receiver banner shows the
+outage bot's mode; the `exit1 content scheduler` banner shows the scheduler's.
 
 **Run it standalone instead** (separate PM2 app / container): `npm run scheduler`,
 and set `CONTENT_SCHEDULER_ENABLED=false` in the receiver so posts do not fire twice.

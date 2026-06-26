@@ -55,7 +55,7 @@ const tick = async ({ entries, store, now }) => {
   }
 
   try {
-    const res = await postTweet(entry.text);
+    const res = await postTweet(entry.text, { dryRun: config.scheduler.dryRun });
     const status = res.dryRun ? 'dry-run' : 'posted';
     await store.record(entry.key, { at: now(), status, tweetId: res.id, text: entry.text });
     const tag = res.dryRun ? paint('dim', '(dry-run)') : paint('green', 'LIVE');
@@ -84,7 +84,7 @@ export function startScheduler({ now = () => Date.now() } = {}) {
 
   const first = entries[0];
   const last = entries[entries.length - 1];
-  const mode = config.dryRun
+  const mode = config.scheduler.dryRun
     ? paint('yellow', 'DRY-RUN — copy logged, nothing posted')
     : xConfigured
       ? paint('green', 'LIVE — posting to X')
