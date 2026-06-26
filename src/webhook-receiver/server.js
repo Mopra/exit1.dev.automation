@@ -1,7 +1,8 @@
 import express from 'express';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { config, xConfigured, openrouterConfigured } from '../config.js';
-import { handleDelivery } from '../lib/publisher.js';
+import { handleDelivery, onPublish } from '../lib/publisher.js';
+import { startScheduler } from '../scheduler/scheduler.js';
 
 // exit1.dev signs each delivery as `X-Exit1-Signature: sha256=<hex>`, an
 // HMAC-SHA256 of the exact raw request body keyed by the webhook secret
@@ -96,12 +97,18 @@ const logPublish = (r) => {
     console.log(paint('magenta', `  ⮑ X ${arrow} [${r.tweetId}] ${r.site}`));
   } else if (r.action === 'dry-run-post' || r.action === 'dry-run-reply') {
     console.log(paint('magenta', `  ⮑ X ${paint('dim', '(dry-run)')} ${r.phase} [${r.tweetId}] ${r.site}`));
+  } else if (r.action === 'hold') {
+    console.log(paint('gray', `  ⮑ X holding ${r.site}: ${r.reason}`));
   } else if (r.action === 'skip') {
     console.log(paint('gray', `  ⮑ X skip: ${r.reason}`));
   } else if (r.action === 'error') {
     console.log(paint('red', `  ⮑ X error: ${r.reason}`));
   }
 };
+
+// A debounced down-post publishes on a timer, after the original request has
+// been acked — route its result through the same logger so it's still seen.
+onPublish(logPublish);
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -165,8 +172,25 @@ const server = app.listen(PORT, () => {
   console.log(`  ${paint('bold', 'Publish')}    ${publishMode}`);
   console.log(`  ${paint('bold', 'Copy')}       ${copyMode}`);
   console.log(`  ${paint('bold', 'Budget')}     ${config.budget.perDay}/day · ${config.budget.perMonth}/month · link in posts: ${config.includeLink ? 'on' : 'off'}`);
+  const debounceLabel = config.debounce.minOutageMs > 0
+    ? `${Math.round(config.debounce.minOutageMs / 1000)}s debounce`
+    : paint('yellow', 'no debounce (post immediately)');
+  const recoveryLabel = config.recovery.enabled
+    ? 'down + recovery reply'
+    : 'down-only (1 write/incident)';
+  console.log(`  ${paint('bold', 'Policy')}     ${debounceLabel} · ${recoveryLabel}`);
   console.log('');
   console.log(paint('gray', '  Waiting for deliveries… (Ctrl+C to stop)'));
+
+  // Start the evergreen content scheduler in-process so the single-container
+  // deploy posts on its own cadence too. If you instead run the standalone
+  // runner (npm run scheduler) or a second container, set
+  // CONTENT_SCHEDULER_ENABLED=false here to avoid double-posting.
+  if (config.scheduler.enabled) {
+    startScheduler();
+  } else {
+    console.log(paint('gray', '  Content scheduler disabled (CONTENT_SCHEDULER_ENABLED=false)'));
+  }
 });
 
 const shutdown = (signal) => {

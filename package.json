@@ -10,7 +10,9 @@
   "scripts": {
     "webhook": "node --env-file-if-exists=.env src/webhook-receiver/server.js",
     "webhook:dev": "node --watch --env-file-if-exists=.env src/webhook-receiver/server.js",
-    "simulate": "node --env-file-if-exists=.env src/dev/simulate.js"
+    "simulate": "node --env-file-if-exists=.env src/dev/simulate.js",
+    "scheduler": "node --env-file-if-exists=.env src/scheduler/runner.js",
+    "calendar": "node --env-file-if-exists=.env src/scheduler/render-draft.js"
   },
   "dependencies": {
     "express": "^4.21.2",

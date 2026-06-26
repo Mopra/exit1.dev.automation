@@ -50,9 +50,12 @@ OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
 
 ## 3. Ensure state persists
 
-The post-budget ledger and open-incident threading state live in `STATE_FILE`
+The post-budget ledger and open-incident state (for dedup and, with
+`POST_RECOVERY=true`, recovery threading) live in `STATE_FILE`
 (`/app/data/state.json` in the container). **It must be on a persistent volume**, or a
-restart loses the budget counter and recovery threads. Confirm the compose service mounts
+restart loses the budget counter and every open incident. (Debounce holds are in-memory and
+are *meant* to be lost on restart — a held down simply never posts, which fails safe.)
+Confirm the compose service mounts
 a volume at `/app/data` (the reference [docker-compose.yml](docker-compose.yml) defines
 `automation-data:/app/data`). If the current VPS compose doesn't, add it before going live.
 
@@ -64,10 +67,12 @@ docker compose up -d --build
 docker logs -f exit1-automation-receiver
 ```
 
-The banner should read `Publish  DRY-RUN …`. Watch a few real deliveries: each down/up
-should log `⮑ X (dry-run) down/up [...]` with the exact copy that *would* post. Confirm:
+The banner should read `Publish  DRY-RUN …` and `Policy  …s debounce · down-only`. Watch a
+few real deliveries: a down should first log `⮑ X holding …`, then `⮑ X (dry-run) down [...]`
+once the debounce window elapses, with the exact copy that *would* post. Confirm:
 - copy looks correct and on-brand,
-- recoveries reply into the right thread (`reply→<down id>`),
+- short blips (recovered inside the debounce window) log `down suppressed` and post nothing,
+- recoveries close the incident silently (or, if `POST_RECOVERY=true`, reply into the right thread `reply→<down id>`),
 - dedup / flap-cooldown skips look sane.
 
 ## 5. Go live
@@ -86,6 +91,44 @@ Banner should read `Publish  LIVE — posting to X`. The next real outage posts 
 - Watch the first live incident end-to-end on the X account.
 - If volume gets noisy, lower `POST_BUDGET_PER_DAY` or raise `FLAP_COOLDOWN_MS`.
 - Roll back instantly by setting `DRY_RUN=true` and restarting — no code change needed.
+
+## Content scheduler (evergreen posts)
+
+A second automation lives in `src/scheduler/`: it posts pre-written, human-voice
+tweets (not outages) from the hand-curated calendar in `src/scheduler/calendar.js`
+(each post has an explicit UTC date + time). It shares `DRY_RUN` and the X creds
+with the outage bot but keeps its own state file (`CONTENT_STATE_FILE`, default
+`/app/data/scheduler-state.json` — already on the mounted volume). By default it
+runs **in-process inside the receiver**, so no extra container/service is needed.
+
+**Review before going live:**
+```bash
+npm run calendar        # writes drafts/content-calendar.md — the exact posts + times
+```
+Read that file. It is what will go out, to the minute (jitter included).
+
+**Deploy:** nothing extra — the same `git pull` + `docker compose up -d --build`
+picks it up. With `DRY_RUN=true` the receiver log shows a `exit1 content scheduler`
+banner and, at each slot, a `[scheduler] (dry-run) <pillar>` line with the copy that
+*would* post. When the calendar looks right, the existing `DRY_RUN=false` flip turns
+on real posting for **both** the outage bot and the scheduler.
+
+**Cadence:** fully determined by `calendar.js` — each post has an explicit date
+and time, with per-day counts that already fluctuate 2-4. A small deterministic
+`CONTENT_JITTER_MIN` (default 12) nudges each time so posts never land on the
+exact same minute daily. To reschedule or rewrite, edit `calendar.js` and re-run
+`npm run calendar`.
+
+**Knobs** (all optional, see `.env.example`): `CONTENT_SCHEDULER_ENABLED`,
+`CONTENT_JITTER_MIN`, `CONTENT_GRACE_MIN`, `CONTENT_STATE_FILE`.
+
+**Run it standalone instead** (separate PM2 app / container): `npm run scheduler`,
+and set `CONTENT_SCHEDULER_ENABLED=false` in the receiver so posts do not fire twice.
+
+> Combined write volume stays well within the API tier: 3-6 scheduled posts/day plus
+> at most the outage budget. The scheduler skips (marks "missed"), never backfills,
+> any slot whose window passed while the box was down — so a restart never dumps a
+> burst or posts yesterday's content late.
 
 ## Troubleshooting
 

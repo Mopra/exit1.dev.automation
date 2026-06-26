@@ -7,13 +7,14 @@ Automation and AI agent hub for [exit1.dev](https://exit1.dev). See [purpose.md]
 A webhook receiver that turns exit1.dev uptime events into posts on X:
 
 ```
-site goes down → exit1.dev webhook → receiver → normalize → AI copy (OpenRouter)
-              → post to X        → store the tweet id
-site recovers → exit1.dev webhook → receiver → reply into the same thread
-              → "back up after 42m"
+site goes down → exit1.dev webhook → receiver → normalize
+              → hold briefly to confirm it isn't a blip (debounce)
+              → AI copy (OpenRouter) → post to X → store the tweet id
+site recovers → exit1.dev webhook → receiver → close the incident
+              (down-only by default — no recovery post)
 ```
 
-So followers see, in real time, when something exit1.dev monitors goes down — and the all-clear when it recovers.
+So followers see, in real time, when something exit1.dev monitors goes down. To keep X writes (and the API tier) cheap, the bot is **down-only by default** — one write per incident — and **debounces** short outages so blips never reach X. Flip `POST_RECOVERY=true` to also thread an all-clear reply when a site recovers.
 
 ### Pipeline at a glance
 
@@ -21,14 +22,16 @@ So followers see, in real time, when something exit1.dev monitors goes down — 
 |---|---|---|
 | Receive + ack | [src/webhook-receiver/server.js](src/webhook-receiver/server.js) | Pretty-prints the delivery, acks `200` immediately, then publishes async. |
 | Normalize | [src/lib/normalize.js](src/lib/normalize.js) | Raw payload → clean incident (`down` / `up` / `error`), host extraction, duration helper. |
-| Decide | [src/lib/publisher.js](src/lib/publisher.js) | Dedup (one open incident/site), flap cooldown, post-budget guard. Serialized queue. |
+| Decide | [src/lib/publisher.js](src/lib/publisher.js) | Debounce hold (blips post nothing), dedup (one open incident/site), flap cooldown, post-budget guard. Down-only unless `POST_RECOVERY=true`. Serialized queue. |
 | Write copy | [src/lib/copy.js](src/lib/copy.js) | OpenRouter AI copy with a deterministic template fallback. ≤280 chars enforced. |
-| Post / thread | [src/lib/x-client.js](src/lib/x-client.js) | `twitter-api-v2`, OAuth 1.0a. Recovery replies into the down-tweet's thread. |
+| Post / thread | [src/lib/x-client.js](src/lib/x-client.js) | `twitter-api-v2`, OAuth 1.0a. Posts the down alert; an optional recovery reply threads into it when `POST_RECOVERY=true`. |
 | Persist | [src/lib/state.js](src/lib/state.js) | JSON file: open incidents, post-budget ledger, flap cooldowns. Atomic writes. |
 
 ### Safety rails (why this won't spam or overspend)
 
 - **Dry-run by default** — `DRY_RUN=true` generates and logs copy but posts nothing. Nothing goes public until you explicitly flip it.
+- **Down-only by default** — one X write per incident, not two. The "back up" reply is off unless `POST_RECOVERY=true`, so the write budget stretches twice as far.
+- **Debounce** — a down-post is held for `MIN_OUTAGE_MS` (default 5 min); if the site recovers within the window, nothing is posted at all, so short blips never reach X (and never cost a write).
 - **Dedup** — a site already marked down won't post again until it recovers.
 - **Flap suppression** — after a recovery, a new down-post for that site is suppressed for `FLAP_COOLDOWN_MS` (default 15 min).
 - **Post budget** — hard caps (`30/day`, `400/month` by default) sized under X's lowest write quota; over budget → log-and-skip, never a hard API failure. Counted in wall-clock time, so a backlog of old-timestamped events can't blow the cap.
@@ -52,7 +55,7 @@ Default endpoint: `http://localhost:3000/webhook`. The startup banner shows publ
 npm run simulate
 ```
 
-Runs a scripted down → duplicate → threaded-recovery → flap sequence against a throwaway state file in dry-run, so you can see exactly what would be posted. Uses real AI copy if `OPENROUTER_API_KEY` is set, otherwise the template.
+Runs a scripted sequence against a throwaway state file in dry-run — a held-then-published down, a duplicate, a silent down-only recovery, a suppressed flap, and a debounced blip — so you can see exactly what would (and wouldn't) be posted. Uses a short debounce window so it doesn't actually wait minutes. Uses real AI copy if `OPENROUTER_API_KEY` is set, otherwise the template.
 
 ### Send a test delivery to a running receiver
 
@@ -85,6 +88,8 @@ All config is environment variables — see [.env.example](.env.example) for the
 | `OPENROUTER_API_KEY` | — | Enables AI copy. Without it, template is used. |
 | `OPENROUTER_MODEL` | `anthropic/claude-3.5-haiku` | Any OpenRouter slug. |
 | `POST_BUDGET_PER_DAY` / `_PER_MONTH` | `30` / `400` | Hard self-imposed post caps. |
+| `MIN_OUTAGE_MS` | `300000` | Debounce hold before a down posts; recovery inside it posts nothing. `0` posts immediately. |
+| `POST_RECOVERY` | `false` | When true, also thread an all-clear reply on recovery (doubles writes/incident). |
 | `FLAP_COOLDOWN_MS` | `900000` | Post-recovery suppression window per site. |
 | `INCLUDE_LINK` | `true` | Append the affected site's status-page link (home fallback) to posts. |
 | `STATE_FILE` | `./data/state.json` | Persistent state. **Must be on a durable volume in prod.** |

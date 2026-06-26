@@ -71,6 +71,23 @@ export const config = {
   // avoid spamming X when a site flaps up/down repeatedly.
   flapCooldownMs: int(process.env.FLAP_COOLDOWN_MS, 15 * 60 * 1000),
 
+  // Debounce: hold a down-post this long before publishing it. If the site
+  // recovers within the window, nothing is posted at all — this is what keeps
+  // short flaps/blips off the timeline and, more importantly, off X's write
+  // quota. The cost is a small delay before a real outage is announced. Set to
+  // 0 to post downs immediately (no hold).
+  debounce: {
+    minOutageMs: int(process.env.MIN_OUTAGE_MS, 5 * 60 * 1000),
+  },
+
+  // Recovery ("back up") posts. OFF by default: the bot posts only when a site
+  // goes down, which is one X write per incident instead of two (a down post
+  // plus a threaded reply). Set POST_RECOVERY=true to also thread an all-clear
+  // reply under each down-post.
+  recovery: {
+    enabled: bool(process.env.POST_RECOVERY, false),
+  },
+
   // Branding woven into copy / fallback template. `url` is the website
   // (exit1.dev) — it's both the home fallback and the base for status-page
   // links (exit1.dev/status/<slug>).
@@ -90,6 +107,26 @@ export const config = {
     apiBase: str(process.env.STATUS_API_BASE, 'https://app.exit1.dev'),
     indexTtlMs: int(process.env.STATUS_INDEX_TTL_MS, 10 * 60 * 1000),
     timeoutMs: int(process.env.STATUS_API_TIMEOUT_MS, 8000),
+  },
+
+  // ── Content scheduler (evergreen posts, separate from the outage bot) ──
+  // Posts the hand-curated calendar in src/scheduler/calendar.js (explicit
+  // date + time per post). Shares the same DRY_RUN + X creds as the outage bot,
+  // but its own state file and its own logic. Default-on, but DRY_RUN gates
+  // real posting. To change WHAT/WHEN, edit calendar.js (not env).
+  scheduler: {
+    enabled: bool(process.env.CONTENT_SCHEDULER_ENABLED, true),
+    // +/- minutes of deterministic jitter on each post's time, so posts do not
+    // land on the exact same minute every day (an automation tell). Stable per
+    // post, so the rendered draft matches what actually posts.
+    jitterMinutes: int(process.env.CONTENT_JITTER_MIN, 12),
+    // If a slot's time passes by more than this while the process is down, skip
+    // it (mark "missed") instead of posting stale content hours/days late.
+    graceMinutes: int(process.env.CONTENT_GRACE_MIN, 180),
+    // How often the scheduler checks for a due slot.
+    tickMs: int(process.env.CONTENT_TICK_MS, 60 * 1000),
+    // Separate from STATE_FILE so the two automations never share a file.
+    stateFile: str(process.env.CONTENT_STATE_FILE, './data/scheduler-state.json'),
   },
 
   // ── Persistence ────────────────────────────────────────────────

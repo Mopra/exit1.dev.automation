@@ -31,7 +31,7 @@ If a feature belongs in the product itself, it goes in `exit1.dev`. If it is ope
 | Status | Automation | Description |
 |---|---|---|
 | Live | **Webhook receiver** | HTTP listener for `website_down` / `website_up` events emitted by exit1.dev webhooks. Normalizes deliveries and feeds downstream automations. Runs at `automation.exit1.dev`. |
-| Live | **X status bot** | Auto-posts outages and recoveries to X. AI-written copy (OpenRouter) with template fallback; recoveries thread under the down-post with downtime duration; dedup, flap suppression, and a hard post-budget guard. Ships dry-run-first. |
+| Live | **X status bot** | Auto-posts outages to X (down-only by default — one write per incident; `POST_RECOVERY=true` adds a threaded all-clear). AI-written copy (OpenRouter) with template fallback; a debounce hold drops short blips before they cost a write; dedup, flap suppression, and a hard post-budget guard. Ships dry-run-first. |
 | Planned | Incident triage agent | LLM-driven classification of incoming downtime events (transient vs. real, severity, blast radius). |
 | Planned | Status-page draft agent | Generates status-page incident copy from the raw event stream for human review. |
 | Planned | On-call routing | Forward filtered events to PagerDuty / Opsgenie / Slack with deduplication and noise suppression beyond what exit1.dev's built-in webhook presets do. |
